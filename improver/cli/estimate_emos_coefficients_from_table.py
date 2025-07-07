@@ -118,6 +118,7 @@ def process(
 
     import iris
     import pandas as pd
+    import pyarrow as pa
     from iris.cube import CubeList
 
     from improver.calibration.dataframe_utilities import (
@@ -137,13 +138,59 @@ def process(
         - forecast_period_td.floor("D"),
         periods=int(training_length),
         freq="D",
-    ).tz_localize(None)
-    filters = [[("diagnostic", "==", diagnostic), ("blend_time", "in", cycletimes)]]
-    forecast_df = pd.read_parquet(forecast, filters=filters)
+    )
 
+    FORECAST_SCHEMA = pa.schema(
+        [
+            ("percentile", pa.float64()),
+            ("forecast", pa.float32()),
+            ("altitude", pa.float32()),
+            ("blend_time", pa.timestamp("s", "utc")),
+            ("forecast_period", pa.int64()),
+            ("forecast_reference_time", pa.int64()),
+            ("latitude", pa.float32()),
+            ("longitude", pa.float32()),
+            ("time", pa.timestamp("s", "utc")),
+            ("wmo_id", pa.string()),
+            ("station_id", pa.string()),
+            ("cf_name", pa.string()),
+            ("units", pa.string()),
+            ("experiment", pa.string()),
+            ("period", pa.int64()),
+            ("height", pa.float32()),
+            ("diagnostic", pa.string()),
+        ]
+    )
+    TRUTH_SCHEMA = pa.schema(
+        [
+            ("diagnostic", pa.string()),
+            ("latitude", pa.float32()),
+            ("longitude", pa.float32()),
+            ("altitude", pa.float32()),
+            ("time", pa.timestamp("s", "utc")),
+            ("wmo_id", pa.string()),
+            ("ob_value", pa.float32()),
+        ]
+    )
+    filters = [[("diagnostic", "==", diagnostic), ("blend_time", "in", cycletimes)]]
+    forecast_df = pd.read_parquet(
+        forecast, filters=filters, schema=FORECAST_SCHEMA, engine="pyarrow"
+    )
+
+    for column in ["time", "forecast_reference_time", "blend_time"]:
+        forecast_df[column] = pd.to_datetime(forecast_df[column], unit="us", utc=True)
+    forecast_df["forecast_period"] = pd.to_timedelta(
+        forecast_df["forecast_period"], unit="us"
+    )
+    forecast_df["period"] = pd.to_timedelta(forecast_df["period"], unit="us")
+
+    pd.set_option("display.max_columns", None)
+    print(forecast_df)
     # Load truths from parquet file filtering by diagnostic.
     filters = [[("diagnostic", "==", diagnostic)]]
-    truth_df = pd.read_parquet(truth, filters=filters)
+    truth_df = pd.read_parquet(truth, filters=filters, schema=TRUTH_SCHEMA)
+    truth_df["time"] = pd.to_datetime(truth_df["time"], unit="us", utc=True)
+    print(truth_df)
     if truth_df.empty:
         msg = (
             f"The requested filepath {truth} does not contain the "

@@ -601,6 +601,13 @@ def forecast_dataframe_to_cube(
     cubelist = CubeList()
 
     for adate in training_dates:
+        # print(adate)
+        # print(df["time"].unique())
+        # print("")
+        # print(fp_point)
+        # print(df["forecast_period"].unique())
+        # print("")
+        # print(df)
         time_df = df.loc[(df["time"] == adate) & (df["forecast_period"] == fp_point)]
 
         time_df = _preprocess_temporal_columns(time_df)
